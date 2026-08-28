@@ -1,0 +1,83 @@
+// Fonction serverless Vercel — appelée par la page en POST sur /api/extract.
+// La clé API Anthropic reste ici, côté serveur, jamais exposée au navigateur.
+// À configurer dans Vercel : Project Settings > Environment Variables > ANTHROPIC_API_KEY
+
+module.exports = async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Méthode non autorisée' });
+    return;
+  }
+
+  const { image, media_type } = req.body || {};
+  if (!image || !media_type) {
+    res.status(400).json({ error: 'Image manquante dans la requête.' });
+    return;
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({ error: "Clé API non configurée côté serveur (variable d'environnement ANTHROPIC_API_KEY manquante sur Vercel)." });
+    return;
+  }
+
+  const prompt =
+    "Tu es un assistant d'extraction de données de factures fournisseurs pour un restaurant. " +
+    "Analyse l'image de facture fournie et renvoie UNIQUEMENT un objet JSON valide, sans texte autour, sans balises markdown, au format exact:\n" +
+    '{"fournisseur":"...","date":"JJ/MM/AAAA ou vide","numero_facture":"... ou vide","lignes":[{"designation":"...","quantite":0,"prix_unitaire_ht":0,"montant_ht":0}]}\n' +
+    "Règles: montant_ht est le montant HT de la ligne (si seul le TTC est visible sur la ligne, mets ce montant quand même et laisse prix_unitaire_ht à 0). " +
+    "N'invente aucune ligne, ignore les lignes de totaux/sous-totaux/TVA/frais de port séparés. " +
+    "Nombres avec un point comme séparateur décimal, jamais de virgule ni d'espace, jamais de symbole €. " +
+    "Sois concis, uniquement le JSON, pas d'explication.";
+
+  try {
+    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-5',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type, data: image } },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      })
+    });
+
+    const data = await anthropicRes.json();
+
+    if (!anthropicRes.ok) {
+      res.status(502).json({ error: (data && data.error && data.error.message) || 'Erreur API Anthropic.' });
+      return;
+    }
+
+    const textBlocks = (data.content || [])
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('\n');
+
+    const clean = textBlocks.trim()
+      .replace(/^```json/i, '')
+      .replace(/^```/, '')
+      .replace(/```$/, '')
+      .trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(clean);
+    } catch (e) {
+      res.status(502).json({ error: "Réponse IA illisible — réessaie avec une photo plus nette." });
+      return;
+    }
+
+    res.status(200).json(parsed);
+  } catch (err) {
+    res.status(500).json({ error: "Erreur serveur pendant l'extraction." });
+  }
+};
