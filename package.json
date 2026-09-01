@@ -2,5 +2,8 @@
   "name": "tri-factures",
   "version": "1.0.0",
   "private": true,
-  "description": "Tri des factures fournisseurs par catégorie de compta analytique (La Carte — Conseil Restaurant)"
+  "description": "Tri des factures fournisseurs par catégorie de compta analytique (La Carte — Conseil Restaurant)",
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  }
 }

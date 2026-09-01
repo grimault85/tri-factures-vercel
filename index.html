@@ -479,6 +479,7 @@
       invoice.fournisseur = parsed.fournisseur || '';
       invoice.date = parsed.date || '';
       invoice.numero = parsed.numero_facture || '';
+      invoice.warning = parsed.warning || '';
       invoice.lines = (parsed.lignes||[]).map(l=>({
         id:lid(),
         designation: l.designation || '',
@@ -557,6 +558,9 @@
              '<button class="add-line-btn" data-action="addline" data-inv="'+inv.id+'">+ Saisir une ligne manuellement</button>';
     }
     if(inv.status==='done' || (inv.status==='error' && inv.lines.length>0)){
+      if(inv.warning){
+        body += '<div class="status-line error" style="padding-top:0;padding-bottom:10px;">⚠ '+escapeHtml(inv.warning)+'</div>';
+      }
       body += renderGroupedLines(inv);
     }
 
