@@ -4,7 +4,7 @@
   "private": true,
   "description": "Tri des factures fournisseurs par catégorie de compta analytique (La Carte — Conseil Restaurant)",
   "dependencies": {
-    "pdf-lib": "^1.17.1",
-    "@upstash/redis": "^1.38.3"
+    "ioredis": "^6.0.0",
+    "pdf-lib": "^1.17.1"
   }
 }
