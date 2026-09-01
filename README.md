@@ -29,6 +29,10 @@ vercel env add ANTHROPIC_API_KEY
 
 ## À savoir
 
+- **PDF** : chaque page est lue par l'IA comme une image de facture. Un PDF multi-pages
+  très volumineux (plusieurs Mo, scan haute résolution) peut approcher la limite de
+  taille de requête d'une fonction Vercel (~4,5 Mo sur le plan gratuit). Si ça arrive,
+  le plus simple reste un PDF par facture, ou compresser le scan.
 - **Coût** : chaque photo de facture traitée consomme des crédits sur ta clé API
   Anthropic (facturés à ton compte, pas au comptable). Le volume dépend du nombre
   de factures scannées.

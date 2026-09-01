@@ -300,9 +300,9 @@
   <section class="section">
     <div class="dropzone" id="dropzone">
       <div class="dz-icon">📎</div>
-      <div><strong>Dépose une ou plusieurs photos de factures</strong> ou clique pour parcourir</div>
-      <div class="dz-sub">JPG, PNG, WEBP — l'extraction se fait ligne par ligne, à corriger si besoin</div>
-      <input type="file" id="fileInput" accept="image/*" multiple>
+      <div><strong>Dépose une ou plusieurs factures</strong> ou clique pour parcourir</div>
+      <div class="dz-sub">Photos (JPG, PNG, WEBP) ou PDF — l'extraction se fait ligne par ligne, à corriger si besoin</div>
+      <input type="file" id="fileInput" accept="image/*,application/pdf" multiple>
     </div>
   </section>
 
@@ -439,7 +439,7 @@
 
   function handleFiles(fileList){
     Array.from(fileList).forEach(file=>{
-      if(!file.type.startsWith('image/')) return;
+      if(!file.type.startsWith('image/') && file.type!=='application/pdf') return;
       const invoice = {
         id: iid(), filename:file.name, status:'pending',
         fournisseur:'', date:'', numero:'', lines:[], errorMsg:'', thumb:null

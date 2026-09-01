@@ -22,12 +22,17 @@ module.exports = async (req, res) => {
 
   const prompt =
     "Tu es un assistant d'extraction de données de factures fournisseurs pour un restaurant. " +
-    "Analyse l'image de facture fournie et renvoie UNIQUEMENT un objet JSON valide, sans texte autour, sans balises markdown, au format exact:\n" +
+    "Analyse le document de facture fourni (photo ou PDF) et renvoie UNIQUEMENT un objet JSON valide, sans texte autour, sans balises markdown, au format exact:\n" +
     '{"fournisseur":"...","date":"JJ/MM/AAAA ou vide","numero_facture":"... ou vide","lignes":[{"designation":"...","quantite":0,"prix_unitaire_ht":0,"montant_ht":0}]}\n' +
     "Règles: montant_ht est le montant HT de la ligne (si seul le TTC est visible sur la ligne, mets ce montant quand même et laisse prix_unitaire_ht à 0). " +
     "N'invente aucune ligne, ignore les lignes de totaux/sous-totaux/TVA/frais de port séparés. " +
     "Nombres avec un point comme séparateur décimal, jamais de virgule ni d'espace, jamais de symbole €. " +
     "Sois concis, uniquement le JSON, pas d'explication.";
+
+  const isPdf = media_type === 'application/pdf';
+  const fileBlock = isPdf
+    ? { type: 'document', source: { type: 'base64', media_type, data: image } }
+    : { type: 'image', source: { type: 'base64', media_type, data: image } };
 
   try {
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -43,7 +48,7 @@ module.exports = async (req, res) => {
         messages: [{
           role: 'user',
           content: [
-            { type: 'image', source: { type: 'base64', media_type, data: image } },
+            fileBlock,
             { type: 'text', text: prompt }
           ]
         }]
