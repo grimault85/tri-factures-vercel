@@ -465,7 +465,13 @@
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ image: base64, media_type: mimeType })
       });
-      const parsed = await response.json();
+      const rawText = await response.text();
+      let parsed;
+      try{
+        parsed = JSON.parse(rawText);
+      }catch(e){
+        throw new Error("Réponse non-JSON du serveur (HTTP "+response.status+"): "+rawText.slice(0,200));
+      }
       if(!response.ok || parsed.error){
         throw new Error(parsed.error || 'extraction failed');
       }
