@@ -8,12 +8,20 @@ du comptable.
 
 1. **Créer un dépôt GitHub** avec ces fichiers (ou pousser dans un dépôt existant).
 2. Aller sur [vercel.com](https://vercel.com) → **Add New → Project** → importer ce dépôt GitHub.
-   Vercel détecte automatiquement `index.html` (statique) et `api/extract.js` (fonction serverless),
+   Vercel détecte automatiquement `index.html` (statique) et `api/*.js` (fonctions serverless),
    aucune configuration de build n'est nécessaire.
 3. Avant de déployer (ou juste après, dans **Project → Settings → Environment Variables**),
    ajouter :
    - `ANTHROPIC_API_KEY` = ta clé API Anthropic (récupérable sur console.anthropic.com)
-4. Déployer. Vercel donne une URL du type `https://tri-factures-xxxx.vercel.app`.
+4. **Connecter le stockage des catégories** (nouveau, nécessaire pour que les catégories et
+   mots-clés appris survivent d'une session à l'autre) :
+   - Dans le projet Vercel → onglet **Storage** → **Create Database** (ou **Marketplace**)
+   - Choisir **Upstash for Redis** (gratuit sur le plan de base)
+   - Une fois créée, la connecter au projet : Vercel injecte automatiquement les variables
+     `KV_REST_API_URL` et `KV_REST_API_TOKEN` — rien à copier-coller à la main.
+   - Sans cette étape, l'appli fonctionne quand même (tri des factures, sous-totaux) mais les
+     catégories repartent aux valeurs par défaut à chaque session.
+5. Déployer. Vercel donne une URL du type `https://tri-factures-xxxx.vercel.app`.
    C'est cette URL que tu partages avec le comptable — aucune installation de son côté.
 
 ### Sans GitHub, via la CLI Vercel
@@ -41,12 +49,13 @@ vercel env add ANTHROPIC_API_KEY
   - Vercel propose une **Password Protection** native (payant, plan Pro).
   - Sinon je peux ajouter un mot de passe simple géré par la fonction serverless
     elle-même (gratuit, un cran moins robuste mais suffisant pour un usage interne).
-- **Session uniquement** : comme avant, rien n'est sauvegardé côté serveur — chaque
-  facture traitée reste dans le navigateur du comptable tant que l'onglet est ouvert.
-  Si tu veux que les factures et le récap persistent (retrouver une session le lendemain,
-  historique), il faudra ajouter une base de données (Supabase, comme tes autres projets) —
-  dis-le moi quand ce sera utile.
+- **Session uniquement pour les factures** : chaque facture traitée reste dans le
+  navigateur du comptable tant que l'onglet est ouvert — rien n'est envoyé ni stocké
+  côté serveur pour le contenu des factures elles-mêmes (fournisseur, lignes, montants).
+  Seules les catégories/mots-clés (voir plus bas) sont partagées et persistantes.
 - **Catégories analytiques** : les codes par défaut (`ANA-601-VIANDE`, etc.) sont à
-  personnaliser directement dans l'appli, bouton « ⚙ Catégories » — ce réglage n'est
-  pas encore sauvegardé côté serveur non plus (repart à zéro à l'ouverture), à voir
-  aussi si utile de le figer une fois pour toutes.
+  personnaliser directement dans l'appli, bouton « ⚙ Catégories ». Une fois Upstash for
+  Redis connecté (étape 4 ci-dessus), ces réglages — ainsi que les mots-clés appris
+  automatiquement à chaque correction manuelle — sont **partagés et persistants** :
+  ils survivent au rechargement de la page et sont visibles par tous ceux qui ouvrent
+  l'URL (un seul jeu de catégories pour l'outil, pas un par utilisateur).
