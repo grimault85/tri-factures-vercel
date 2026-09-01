@@ -297,6 +297,8 @@
     </div>
   </header>
 
+  <div class="empty-state" id="learnNote" style="display:none; text-align:left; border-style:solid; border-color:var(--brass-dim); background:var(--brass-bg); color:var(--ink); margin-bottom:20px; padding:10px 14px; font-family:var(--mono); font-size:12px;"></div>
+
   <section class="section">
     <div class="dropzone" id="dropzone">
       <div class="dz-icon">📎</div>
@@ -351,6 +353,11 @@
 (function(){
 
   // ---------- default categories ----------
+  // À incrémenter à chaque fois que defaultCategories() change de façon significative,
+  // pour qu'un ancien jeu de catégories déjà stocké (avant une correction de bug, par
+  // exemple) ne prenne pas le pas indéfiniment sur les nouveaux défauts.
+  const CATEGORIES_SCHEMA_VERSION = 2;
+
   function defaultCategories(){
     return [
       {id:cid(), name:'Viande', compte:'ANA-601-VIANDE', color:'#A6432E',
@@ -359,15 +366,21 @@
         keywords:['poisson','saumon','cabillaud','crevette','fruits de mer','coquillage','moule','huitre','thon','bar','dorade','sole','calamar','poulpe','lieu','colin']},
       {id:cid(), name:'Crémerie', compte:'ANA-601-CREMERIE', color:'#B08F1F',
         keywords:['lait','beurre','creme','fromage','yaourt','oeuf','oeufs','mozzarella','parmesan','comte','emmental','chevre']},
-      {id:cid(), name:'Légumes / Fruits', compte:'ANA-601-LEGUMES', color:'#4F7A3D',
-        keywords:['legume','fruit','salade','tomate','pomme de terre','pomme','oignon','carotte','courgette','poireau','champignon','citron','banane','avocat','herbe','persil']},
+      {id:cid(), name:'Légumes', compte:'ANA-601-LEGUMES', color:'#4F7A3D',
+        keywords:['legume','salade','tomate','pomme de terre','oignon','carotte','courgette','poireau','champignon','avocat','herbe','persil',
+          'epinard','roquette','romaine','fenouil','aubergine','gingembre','concombre','patate douce','shiso','celeri','coriandre','bimi',
+          'mais','rhubarbe','sucrine','pousse pois','mini carotte','basilic','menthe']},
+      {id:cid(), name:'Fruits', compte:'ANA-601-FRUITS', color:'#CC5B2E',
+        keywords:['fruit','pomme','citron','banane',
+          'orange','pomelos','pamplemousse','mangue','ananas','kiwi','melon','pasteque','abricot','prune','poire','raisin','figue','nectarine','peche','grenade','mirabelle',
+          'fraise','groseille','myrtille','corbeille de fruit']},
       {id:cid(), name:'Épicerie sèche', compte:'ANA-601-EPICERIE', color:'#8A6A3D',
         keywords:['epicerie','farine','riz','pate','pates','conserve','huile','sucre','sel','poivre','sauce','vinaigre','condiment','cafe en grain','the']},
       {id:cid(), name:'Surgelés', compte:'ANA-601-SURGELES', color:'#2E7D8C',
         keywords:['surgele','surgelee','glace','sorbet']},
       {id:cid(), name:'Boissons / Bar', compte:'ANA-602-BOISSONS', color:'#6B4E71',
         keywords:['vin','biere','alcool','spiritueux','champagne','soda','jus','cafe','boisson','eau minerale','liqueur','apero']},
-      {id:cid(), name:'Petit déjeuner', compte:'ANA-601-PDEJ', color:'#C98A2E',
+      {id:cid(), name:'Petit déjeuner', compte:'ANA-601-PDEJ', color:'#D4A62E',
         keywords:['viennoiserie','confiture','cereale','petit dejeuner','croissant','pain au chocolat','miel']},
       {id:cid(), name:'Repas du personnel', compte:'ANA-601-PERSONNEL', color:'#6B6357',
         keywords:['repas personnel','nourriture personnel']},
@@ -381,11 +394,53 @@
 
   let state = {
     categories: defaultCategories(),
-    invoices: []
+    invoices: [],
+    categoriesLoaded: false
   };
 
+  let saveTimer = null;
+  function saveCategoriesSoon(){
+    // Petit débounce pour éviter une rafale d'écritures lors de reclassements en cascade.
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(()=>{
+      fetch('/api/categories', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ categories: state.categories, schemaVersion: CATEGORIES_SCHEMA_VERSION })
+      }).catch(err=>console.error('Sauvegarde catégories échouée', err));
+    }, 400);
+  }
+
+  async function loadCategories(){
+    try{
+      const resp = await fetch('/api/categories');
+      const data = await resp.json();
+      if(resp.ok && data.categories && Array.isArray(data.categories.list) && data.categories.list.length
+         && data.categories.schemaVersion === CATEGORIES_SCHEMA_VERSION){
+        state.categories = data.categories.list;
+      } else if(resp.ok && Array.isArray(data.categories) && data.categories.length){
+        // Ancien format sans numéro de schéma (avant cette mise à jour) : on l'ignore
+        // et on repart sur les nouveaux défauts, qu'on resauvegarde pour écraser l'ancien.
+        state.categories = defaultCategories();
+        saveCategoriesSoon();
+      }
+    }catch(err){
+      console.error('Chargement catégories échoué, utilisation des valeurs par défaut', err);
+    }
+    state.categoriesLoaded = true;
+    render();
+  }
+
   function normalize(s){
-    return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    return String(s||'')
+      .toLowerCase()
+      .replace(/œ/g,'oe')
+      .replace(/æ/g,'ae')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  }
+
+  function escapeRegex(s){
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   function classify(designation){
@@ -395,10 +450,62 @@
       if(cat.locked) continue;
       for(const kw of cat.keywords){
         const k = normalize(kw);
-        if(k && t.includes(k)) return cat.id;
+        if(!k) continue;
+        const re = new RegExp('\\b'+escapeRegex(k)+'s?\\b');
+        if(re.test(t)) return cat.id;
       }
     }
     return 'nonclasse';
+  }
+
+  // ---------- apprentissage à partir des corrections manuelles ----------
+  const LEARN_STOPWORDS = new Set([
+    'cat1','cat2','cat3','cat4','cat5','france','espagne','italie','belgique','hollande','pologne','perou','chine',
+    'bresil','egypte','honduras','senegal','vietnam','inde','equateur','serbie','mexique','costa','rica','afrique',
+    'sud','nouvelle','zelande','zeland','pays','bas','origine',
+    'kg','kgs','gr','grs','cl','ml','pce','pces','piece','pieces','barquette','sachet','boite','seau','sac',
+    'cagette','colis','plein','air','premium','cal','calibre','rang','rangs','nombre','ajuster','verifier',
+    'mur','murs','trop','pas','mettre','racine','bio','graine','etait',
+    'il','une','de','la','le','les','des','du','un'
+  ]);
+
+  function extractLearnKeyword(designation){
+    const t = normalize(designation);
+    const tokens = t.split(/[^a-z0-9]+/).filter(Boolean);
+    for(const tok of tokens){
+      if(tok.length<3) continue;
+      if(/^\d+$/.test(tok)) continue;
+      if(/^x\d+$/.test(tok)) continue;
+      if(LEARN_STOPWORDS.has(tok)) continue;
+      return tok;
+    }
+    return null;
+  }
+
+  function learnFromCorrection(designation, categoryId){
+    const kw = extractLearnKeyword(designation);
+    if(!kw) return;
+
+    // Retire ce mot des autres catégories pour qu'il ne soit plus jamais "volé" par une mauvaise catégorie.
+    state.categories.forEach(c=>{
+      if(c.id!==categoryId){
+        c.keywords = c.keywords.filter(x => normalize(x)!==kw);
+      }
+    });
+    const target = catById(categoryId);
+    if(!target.locked && !target.keywords.some(x=>normalize(x)===kw)){
+      target.keywords.push(kw);
+    }
+
+    // Reclasse tout de suite les autres lignes non corrigées manuellement, dans toutes les factures de la session.
+    state.invoices.forEach(inv=>{
+      inv.lines.forEach(l=>{
+        if(!l.manual) l.categoryId = classify(l.designation);
+      });
+    });
+
+    state.lastLearned = { keyword: kw, category: target.name };
+    saveCategoriesSoon();
   }
 
   function catById(id){
@@ -436,7 +543,7 @@
     handleFiles(e.target.files);
     fileInput.value='';
   });
-/// push
+
   function handleFiles(fileList){
     Array.from(fileList).forEach(file=>{
       if(!file.type.startsWith('image/') && file.type!=='application/pdf') return;
@@ -537,6 +644,14 @@
 
   // ---------- render ----------
   function render(){
+    const learnNote = document.getElementById('learnNote');
+    if(state.lastLearned){
+      learnNote.style.display = 'block';
+      learnNote.textContent = '🧠 mot-clé « '+state.lastLearned.keyword+' » retenu pour « '+state.lastLearned.category+' » — appliqué aux lignes correspondantes de cette session.';
+    } else {
+      learnNote.style.display = 'none';
+    }
+
     ticketCount.textContent = state.invoices.filter(i=>i.status==='done').length;
     emptyState.style.display = state.invoices.length===0 ? 'block':'none';
     const totalLines = state.invoices.reduce((s,i)=>s+i.lines.length,0);
@@ -684,8 +799,13 @@
         const {inv, line} = e.target.dataset;
         const invoice = state.invoices.find(i=>i.id===inv);
         const l = invoice.lines.find(x=>x.id===line);
-        l.categoryId = e.target.value;
+        const oldCat = l.categoryId;
+        const newCat = e.target.value;
+        l.categoryId = newCat;
         l.manual = true;
+        if(newCat!==oldCat && newCat!=='nonclasse'){
+          learnFromCorrection(l.designation, newCat);
+        }
         render();
       });
     });
@@ -732,6 +852,7 @@
     const nc = state.categories.findIndex(c=>c.id==='nonclasse');
     state.categories.splice(nc, 0, {id:cid(), name:'Nouvelle catégorie', compte:'', color:'#7C8377', keywords:[]});
     renderCatEdit();
+    saveCategoriesSoon();
   });
 
   document.getElementById('resetCategories').addEventListener('click', ()=>{
@@ -739,6 +860,7 @@
       state.categories = defaultCategories();
       state.invoices.forEach(inv=>inv.lines.forEach(l=>{ if(!l.manual) l.categoryId = classify(l.designation); }));
       renderCatEdit();
+      saveCategoriesSoon();
     }
   });
 
@@ -763,17 +885,19 @@
           } else {
             c[field] = inp.value;
           }
+          saveCategoriesSoon();
         });
       });
       const delBtn = row.querySelector('[data-action="del-cat"]');
       if(delBtn) delBtn.addEventListener('click', ()=>{
         state.categories = state.categories.filter(x=>x.id!==id);
         renderCatEdit();
+        saveCategoriesSoon();
       });
     });
   }
 
-  render();
+  loadCategories();
 })();
 </script>
 </body>

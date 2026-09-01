@@ -31,6 +31,7 @@ module.exports = async (req, res) => {
     try {
       const stored = await redis.get(STORE_KEY);
       // stored est déjà un objet JS (le client Upstash désérialise automatiquement le JSON).
+      // Format attendu : { list: [...categories], schemaVersion: N } — ou null si rien stocké.
       res.status(200).json({ categories: stored || null });
     } catch (err) {
       console.error('Erreur lecture catégories', err);
@@ -40,13 +41,13 @@ module.exports = async (req, res) => {
   }
 
   if (req.method === 'POST') {
-    const { categories } = req.body || {};
+    const { categories, schemaVersion } = req.body || {};
     if (!Array.isArray(categories)) {
       res.status(400).json({ error: 'Format invalide : "categories" doit être un tableau.' });
       return;
     }
     try {
-      await redis.set(STORE_KEY, categories);
+      await redis.set(STORE_KEY, { list: categories, schemaVersion: schemaVersion || 0 });
       res.status(200).json({ ok: true });
     } catch (err) {
       console.error('Erreur écriture catégories', err);
