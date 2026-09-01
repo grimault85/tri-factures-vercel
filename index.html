@@ -489,7 +489,9 @@
       }
     }catch(err){
       invoice.status='error';
-      invoice.errorMsg = "Extraction impossible (photo peu lisible, ou facture trop longue pour une seule lecture). Réessaie une photo plus nette, ou saisis les lignes manuellement.";
+      console.error('Extraction facture', invoice.filename, err);
+      invoice.errorMsg = (err && err.message) ? err.message :
+        "Extraction impossible — vérifie la facture ou réessaie.";
     }
     render();
   }

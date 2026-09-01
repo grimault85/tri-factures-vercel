@@ -44,7 +44,7 @@ module.exports = async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [{
           role: 'user',
           content: [
@@ -58,7 +58,13 @@ module.exports = async (req, res) => {
     const data = await anthropicRes.json();
 
     if (!anthropicRes.ok) {
-      res.status(502).json({ error: (data && data.error && data.error.message) || 'Erreur API Anthropic.' });
+      console.error('Erreur API Anthropic', anthropicRes.status, data);
+      res.status(502).json({ error: (data && data.error && data.error.message) || ('Erreur API Anthropic (HTTP ' + anthropicRes.status + ').') });
+      return;
+    }
+
+    if (data.stop_reason === 'max_tokens') {
+      res.status(502).json({ error: "La réponse a été coupée avant la fin (facture avec beaucoup de lignes). Réessaie, ou scinde la facture en plusieurs PDF." });
       return;
     }
 
@@ -77,12 +83,14 @@ module.exports = async (req, res) => {
     try {
       parsed = JSON.parse(clean);
     } catch (e) {
-      res.status(502).json({ error: "Réponse IA illisible — réessaie avec une photo plus nette." });
+      console.error('JSON illisible renvoyé par le modèle:', clean.slice(0, 500));
+      res.status(502).json({ error: "Réponse IA non exploitable. Détail: " + clean.slice(0, 200) });
       return;
     }
 
     res.status(200).json(parsed);
   } catch (err) {
-    res.status(500).json({ error: "Erreur serveur pendant l'extraction." });
+    console.error('Erreur serveur /api/extract', err);
+    res.status(500).json({ error: "Erreur serveur pendant l'extraction : " + (err && err.message ? err.message : 'inconnue') });
   }
 };
